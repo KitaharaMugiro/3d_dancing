@@ -272,7 +272,8 @@ function updateOffAxisCamera() {
 function animate() {
     const time = clock.getElapsedTime();
     if (modelMesh) {
-        modelMesh.rotation.y = Math.sin(time * 0.5) * 0.05;
+        // Continuous rotation
+        modelMesh.rotation.y = time * 0.5;
     }
     updateOffAxisCamera();
     renderer.render(scene, camera);
