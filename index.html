@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Parallax Dancing Girl</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Three.js -->
+  <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+          "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"
+        }
+      }
+    </script>
+</head>
+
+<body>
+  <div id="loading">
+    <h1>Loading AI Model...</h1>
+    <p>Please allow camera access when prompted.</p>
+  </div>
+
+  <!-- Hidden video element for MediaPipe input -->
+  <video id="webcam" style="display: none;" autoplay playsinline></video>
+
+  <!-- Canvas container -->
+  <div id="canvas-container"></div>
+
+  <script type="module" src="script.js"></script>
+</body>
+
+</html>
