@@ -3,12 +3,9 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 
 // Configuration
-const PARALLAX_SCALE = 50.0;
 const MODEL_PATH = 'HoushouMarine/宝鐘マリンV2.pmx';
 
 // "Virtual Screen" dimensions
-// SCREEN_WIDTH is fixed world units.
-// SCREEN_HEIGHT will be calculated based on window aspect ratio.
 let SCREEN_WIDTH = 40;
 let SCREEN_HEIGHT = 22.5;
 
@@ -22,7 +19,7 @@ let clock = new THREE.Clock();
 // Head position in World Units
 let headX = 0;
 let headY = 0;
-let headZ = 30; // Closer for stronger parallax (User Suggestion: 30)
+let headZ = 30;
 
 async function init() {
     setupThreeJS();
@@ -35,6 +32,7 @@ async function init() {
 function setupThreeJS() {
     const container = document.getElementById('canvas-container');
 
+    // Initial camera setup (will be overridden)
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 0, headZ);
 
@@ -49,7 +47,6 @@ function setupThreeJS() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    // Initial check for size
     onWindowResize();
 
     // Lighting
@@ -95,7 +92,7 @@ function createEnvironment() {
     gridTexture.repeat.set(2, 2);
 
     // 2. Open Room (5 Planes)
-    const w = 80, h = 60, d = 120; // Deeper room (d=120) for background separation
+    const w = 80, h = 60, d = 120;
     const zFront = 0, zBack = -120;
 
     const mat = new THREE.MeshStandardMaterial({
@@ -111,24 +108,20 @@ function createEnvironment() {
     // Back wall
     const back = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
     back.position.set(0, 0, zBack);
-    // Standard Plane faces +Z. Back wall needs to face room (towards +Z). 
-    // Already facing correct way if room is in front of it? 
-    // If z=-120, we look at it from 0. The front face (normal +Z) is towards us. Correct.
     back.receiveShadow = true;
     room.add(back);
 
     // Left wall
     const left = new THREE.Mesh(new THREE.PlaneGeometry(d, h), mat);
-    // Center of wall in Z
     left.position.set(-w / 2, 0, (zFront + zBack) / 2);
-    left.rotation.y = Math.PI / 2; // Face right
+    left.rotation.y = Math.PI / 2;
     left.receiveShadow = true;
     room.add(left);
 
     // Right wall
     const right = new THREE.Mesh(new THREE.PlaneGeometry(d, h), mat);
     right.position.set(w / 2, 0, (zFront + zBack) / 2);
-    right.rotation.y = -Math.PI / 2; // Face left
+    right.rotation.y = -Math.PI / 2;
     right.receiveShadow = true;
     room.add(right);
 
@@ -153,7 +146,7 @@ function createEnvironment() {
     gridHelper.position.set(0, -h / 2 + 0.1, (zFront + zBack) / 2);
     scene.add(gridHelper);
 
-    // Shadow Floor (Invisible physics floor for shadows if needed further)
+    // Shadow Floor
     const shadowFloorMat = new THREE.ShadowMaterial({ opacity: 0.5 });
     const shadowFloor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), shadowFloorMat);
     shadowFloor.rotation.x = -Math.PI / 2;
@@ -179,13 +172,7 @@ async function loadModel() {
                 const center = box.getCenter(new THREE.Vector3());
 
                 modelMesh.position.x = -center.x;
-                // Feet on floor. Floor is at -30 (h=60, center=0 -> floor=-30)
                 modelMesh.position.y = -30;
-
-                // Depth: Move to z=-5 as requested (center depth).
-                // Center Z is 0 in local.
-                // We want model center at Z=-5? Or feet?
-                // Just setting position.z = -5 - center.z (to offset intrinsic origin)
                 modelMesh.position.z = -5 - center.z;
 
                 scene.add(modelMesh);
@@ -224,7 +211,6 @@ async function setupTracking() {
 }
 
 function predictWebcam() {
-    // FIX 1: Removed requestAnimationFrame recursion
     if (!faceLandmarker || !video || video.paused || video.ended) return;
 
     const startTimeMs = performance.now();
@@ -234,29 +220,40 @@ function predictWebcam() {
     const results = faceLandmarker.detectForVideo(video, startTimeMs);
 
     if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-        const nose = results.faceLandmarks[0][1];
+        // FIX 3: Use Eye Midpoint instead of Nose to reduce rotation noise
+        const lm = results.faceLandmarks[0];
+        const leftEye = lm[33];
+        const rightEye = lm[263];
 
-        // FIX: Simple variable extraction
-        const rawX = (0.5 - nose.x) * 2;
-        const rawY = (nose.y - 0.5) * 2;
+        const midX = (leftEye.x + rightEye.x) * 0.5;
+        const midY = (leftEye.y + rightEye.y) * 0.5;
 
-        const targetX = rawX * PARALLAX_SCALE;
-        const targetY = -rawY * PARALLAX_SCALE * 0.5;
+        // Inverted X for mirror effect
+        const rawX = (0.5 - midX) * 2;
+        const rawY = (midY - 0.5) * 2;
+
+        // FIX 2: Scale based on Window logic (1.2 multiplier for comfort)
+        const targetX = rawX * (SCREEN_WIDTH * 0.5) * 1.2;
+        const targetY = -rawY * (SCREEN_HEIGHT * 0.5) * 1.2;
 
         headX += (targetX - headX) * 0.15;
         headY += (targetY - headY) * 0.15;
-    }
-    // No recursive call here!
-}
 
+        // FIX 2: Clamp to screen bounds to prevent breaking the illusion
+        headX = THREE.MathUtils.clamp(headX, -SCREEN_WIDTH * 0.45, SCREEN_WIDTH * 0.45);
+        headY = THREE.MathUtils.clamp(headY, -SCREEN_HEIGHT * 0.45, SCREEN_HEIGHT * 0.45);
+    }
+}
 
 function updateOffAxisCamera() {
     camera.position.set(headX, headY, headZ);
     camera.quaternion.identity();
 
-    // FIX 3: Dynamic Frustum based on current SCREEN_HEIGHT
+    // FIX 1: Update near/far and projectionMatrixInverse
     const near = 0.1;
     const far = 1000.0;
+    camera.near = near;
+    camera.far = far;
 
     const dist = Math.abs(camera.position.z);
     const scale = near / dist;
@@ -267,6 +264,9 @@ function updateOffAxisCamera() {
     const bottom = (-SCREEN_HEIGHT / 2 - camera.position.y) * scale;
 
     camera.projectionMatrix.makePerspective(left, right, top, bottom, near, far);
+
+    // CRITICAL: Update inverse matrix to avoid side-effects
+    camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
 
 function animate() {
@@ -276,13 +276,13 @@ function animate() {
     }
     updateOffAxisCamera();
     renderer.render(scene, camera);
-    predictWebcam(); // Called once per frame
-    requestAnimationFrame(animate); // Only one rAF loop
+    predictWebcam();
+    requestAnimationFrame(animate);
 }
 
 function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
-    // FIX 3: Update SCREEN_HEIGHT to match window aspect
+    // Dynamic height to match aspect ratio
     SCREEN_HEIGHT = SCREEN_WIDTH / (window.innerWidth / window.innerHeight);
 }
 
